@@ -1,9 +1,9 @@
 {
-  "name": "Reis Office - Teste de Câmera",
-  "short_name": "Reis Câmera",
+  "name": "Reis Office - Fotos do Laudo",
+  "short_name": "Reis Laudos",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f3f6f8",
   "theme_color": "#006064",
-  "description": "Protótipo para validar captura de fotos de laudos técnicos."
+  "description": "Captura e envio de fotos para laudos técnicos da Reis Office."
 }
