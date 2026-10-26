@@ -78,25 +78,29 @@ async function makePdfBlob() {
   clone.removeAttribute('id');
   Object.assign(clone.style, {
     display: 'block',
-    position: 'absolute',
+    position: 'fixed',
     left: '0',
     top: '0',
     width: '794px',
+    maxWidth: '794px',
     background: '#ffffff',
     color: '#182c2d',
-    zIndex: '-1',
-    pointerEvents: 'none'
+    zIndex: '99999',
+    pointerEvents: 'none',
+    opacity: '1',
+    visibility: 'visible',
+    overflow: 'visible'
   });
   document.body.appendChild(clone);
 
   try {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 250))));
     const images = Array.from(clone.querySelectorAll('img'));
     await Promise.all(images.map(img => {
       if (img.complete) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
       return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
     }));
-    return await html2pdf().set({
+    const blob = await html2pdf().set({
       margin: 0,
       filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
       image: { type: 'jpeg', quality: 0.95 },
@@ -112,6 +116,10 @@ async function makePdfBlob() {
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     }).from(clone).outputPdf('blob');
+    if (!blob || blob.size < 1000 || blob.type !== 'application/pdf') {
+      throw new Error('O PDF foi gerado vazio ou inválido. Tente novamente após recarregar a página.');
+    }
+    return blob;
   } finally {
     clone.remove();
   }
