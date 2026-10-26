@@ -35,28 +35,14 @@ document.getElementById('lookupSerial').onclick=async()=>{const serial=val('seri
 registerBtn.onclick=()=>{if(!val('serial').trim()){alert('Informe o serial antes de cadastrar.');return;}if(!val('fabricante').trim()||!val('modelo').trim()){if(!confirm('Marca/fabricante ou modelo está vazio. Deseja cadastrar mesmo assim?'))return;}if(!confirm('Confirmar o cadastro deste equipamento na planilha do Google Sheets?'))return;if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI')){alert('Configure primeiro a URL do Apps Script no index.html.');return;}const payload={action:'addEquipment',serial:val('serial'),cliente:val('cliente'),fabricante:val('fabricante'),tag:val('tag'),modelo:val('modelo'),processador:val('processador'),ram:val('ram'),ssd:val('ssd'),so:val('so'),bios:val('bios')};submitAppsScriptForm(payload,'Cadastro enviado para o Google Sheets. Aguarde a confirmação.');};
 function submitAppsScriptForm(payload,message){const status=document.getElementById('status');status.textContent=message;const frame=document.createElement('iframe');frame.name='appsScriptSubmitFrame';frame.style.display='none';document.body.appendChild(frame);const form=document.createElement('form');form.method='POST';form.action=APPS_SCRIPT_URL;form.target=frame.name;form.style.display='none';Object.entries(payload).forEach(([k,v])=>{const input=document.createElement('input');input.name=k;input.value=v??'';form.appendChild(input)});document.body.appendChild(form);const handler=(event)=>{if(event.data&&event.data.type==='reisOfficeAppsScript'){window.removeEventListener('message',handler);const r=event.data.result||{};status.textContent=r.ok?(r.message||'Operação concluída.'):('Não foi possível cadastrar: '+(r.error||'erro desconhecido'));if(r.ok)showManualRegister(false);else alert(status.textContent);}};window.addEventListener('message',handler);form.submit();setTimeout(()=>{window.removeEventListener('message',handler);form.remove();frame.remove()},15000)}
 
-```javascript
 async function makePdfBlob() {
   buildReport();
-
   const report = document.getElementById('printReport');
-
-  if (!window.html2pdf) {
-    throw new Error(
-      'Biblioteca PDF não carregada. Verifique sua conexão com a internet.'
-    );
-  }
-
-  if (!report || !report.innerHTML.trim()) {
-    throw new Error(
-      'O relatório está vazio. Verifique os dados antes de gerar o PDF.'
-    );
-  }
+  if (!window.html2pdf) throw new Error('Biblioteca PDF não carregada. Verifique sua conexão com a internet.');
+  if (!report || !report.innerHTML.trim()) throw new Error('O relatório está vazio. Verifique os dados antes de gerar o PDF.');
 
   const clone = report.cloneNode(true);
-
   clone.removeAttribute('id');
-
   Object.assign(clone.style, {
     display: 'block',
     position: 'absolute',
@@ -68,69 +54,38 @@ async function makePdfBlob() {
     zIndex: '-1',
     pointerEvents: 'none'
   });
-
   document.body.appendChild(clone);
 
   try {
-    // Aguarda o navegador processar o conteúdo e carregar as imagens.
-    await new Promise(resolve =>
-      requestAnimationFrame(() =>
-        requestAnimationFrame(resolve)
-      )
-    );
-
-    const imagens = Array.from(clone.querySelectorAll('img'));
-
-    await Promise.all(
-      imagens.map(img => {
-        if (img.complete) {
-          return img.decode
-            ? img.decode().catch(() => {})
-            : Promise.resolve();
-        }
-
-        return new Promise(resolve => {
-          img.onload = resolve;
-          img.onerror = resolve;
-        });
-      })
-    );
-
-    return await html2pdf()
-      .set({
-        margin: 0,
-        filename:
-          (val('laudo') || 'Laudo') +
-          '_' +
-          (val('serial') || 'sem_serial') +
-          '.pdf',
-        image: {
-          type: 'jpeg',
-          quality: 0.95
-        },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: false,
-          backgroundColor: '#ffffff',
-          logging: false,
-          scrollX: 0,
-          scrollY: 0
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait'
-        },
-        pagebreak: {
-          mode: ['css', 'legacy']
-        }
-      })
-      .from(clone)
-      .outputPdf('blob');
-
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const images = Array.from(clone.querySelectorAll('img'));
+    await Promise.all(images.map(img => {
+      if (img.complete) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
+      return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+    }));
+    return await html2pdf().set({
+      margin: 0,
+      filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        scrollX: 0,
+        scrollY: 0
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(clone).outputPdf('blob');
   } finally {
     clone.remove();
   }
 }
-```
+
+document.getElementById('sharePdf').onclick=async()=>{const status=document.getElementById('status');try{status.textContent='Preparando PDF para compartilhar...';const blob=await makePdfBlob();const file=new File([blob],(val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf',{type:'application/pdf'});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Laudo Técnico Reis Office',text:'Laudo técnico do equipamento serial '+(val('serial')||'')});status.textContent='Menu de compartilhamento aberto.'}else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name;a.click();status.textContent='PDF baixado. Anexe o arquivo manualmente no WhatsApp.';window.open('https://wa.me/?text='+encodeURIComponent('Segue o laudo técnico do equipamento serial '+(val('serial')||'')+'.'),'_blank')}}catch(e){status.textContent='Não foi possível compartilhar: '+e.message;alert(e.message)}};
+document.getElementById('previewPdf').onclick=()=>{buildReport();document.getElementById('status').textContent='Na janela de impressão, escolha “Salvar como PDF” para guardar no dispositivo.';window.print()};
+document.getElementById('driveBtn').onclick=async()=>{const status=document.getElementById('status');try{if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))throw new Error('Configure a URL do Apps Script no arquivo index.html.');status.textContent='Gerando PDF e enviando ao Google Drive...';const blob=await makePdfBlob();const reader=new FileReader();const base64=await new Promise((resolve,reject)=>{reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(blob)});const payload={action:'savePdf',filename:(val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf',serial:val('serial'),laudo:val('laudo'),pdf:base64};const form=document.createElement('form');form.method='POST';form.action=APPS_SCRIPT_URL;form.target='driveSaveFrame';const frame=document.createElement('iframe');frame.name='driveSaveFrame';frame.style.display='none';document.body.appendChild(frame);document.body.appendChild(form);Object.entries(payload).forEach(([k,v])=>{const i=document.createElement('input');i.type='hidden';i.name=k;i.value=v;form.appendChild(i)});form.submit();status.textContent='Solicitação enviada. Verifique a pasta Laudos Técnicos no Google Drive em alguns instantes.';setTimeout(()=>{form.remove();frame.remove()},5000)}catch(e){status.textContent=e.message;alert(e.message)}};
+document.getElementById('saveDraft').onclick=()=>{const d={};document.querySelectorAll('input:not([type=file]),select,textarea').forEach(e=>d[e.id]=e.value);try{localStorage.setItem('reisOfficeLaudoDraft',JSON.stringify(d));document.getElementById('status').textContent='Rascunho salvo neste navegador. As fotos não são incluídas no rascunho.'}catch(e){alert('Não foi possível salvar o rascunho neste navegador.')}};
+</script></body></html>
