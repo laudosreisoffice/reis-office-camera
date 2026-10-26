@@ -34,7 +34,21 @@
       <option>Frente</option><option>Tela</option><option>Base inferior</option><option>Teclado</option>
       <option>Etiqueta / Serial</option><option>Carregador</option><option>Lateral esquerda</option><option>Lateral direita</option>
     </select></div><div class="field"><label>Zoom</label><select id="cameraZoom"><option value="1">1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option><option value="2">2×</option><option value="2.5">2,5×</option><option value="3">3×</option></select></div></div><video id="cameraVideo" autoplay playsinline style="display:none;width:100%;max-height:360px;background:#111;border-radius:8px;margin-top:10px"></video><canvas id="cameraCanvas" style="display:none"></canvas><div class="actions"><button class="btn primary" id="startCamera">Abrir câmera</button><button class="btn secondary" id="takePhoto" disabled>Tirar foto</button><button class="btn outline" id="stopCamera" disabled>Fechar câmera</button></div><p class="hint" id="cameraStatus">A câmera exige HTTPS e permissão do navegador. Zoom nativo depende do aparelho; quando não disponível, a prévia usa zoom digital.</p></div><div class="photoCats" id="photoCats"></div><div class="actions"><button class="btn secondary" id="clearPhotos">Limpar fotos desta sessão</button></div></section>
-<section class="card"><h2>Gerar relatório</h2><div class="notice">O PDF inclui dados, checklist, logotipo e fotos. Você pode salvar localmente, compartilhar pelo menu do celular ou enviar ao Google Drive após configurar o Apps Script.</div><div class="actions"><button class="btn primary" id="previewPdf">Pré-visualizar / Salvar PDF</button><button class="btn secondary" id="driveBtn">Salvar PDF no Google Drive</button><button class="btn outline" id="sharePdf">Compartilhar PDF / WhatsApp</button><button class="btn outline" id="saveDraft">Salvar rascunho neste dispositivo</button></div><p class="hint" id="status"></p></section><div class="foot">Reis Office · Laudo Técnico · Protótipo para validação</div></main><div id="printReport"></div>
+<section class="card"><h2>Gerar relatório</h2><div class="notice">O PDF inclui dados, checklist, logotipo e fotos. Você pode salvar localmente, compartilhar pelo menu do celular ou enviar ao Google Drive após configurar o Apps Script.</div><div class="actions"><button class="btn primary" id="previewPdf">Pré-visualizar / Salvar PDF</button><button class="btn secondary" id="driveBtn">Salvar PDF no Google Drive</button><button class="btn outline" id="sharePdf">Compartilhar PDF / WhatsApp</button><button class="btn outline" id="saveDraft">Salvar rascunho neste dispositivo</button></div><p class="hint" id="status"></p></section><div class="foot">Reis Office · Laudo Técnico · Protótipo para validação</div></main><div id="pdfModal" class="hide" style="position:fixed;inset:0;background:#0009;z-index:9999;padding:18px;display:flex;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;width:min(100%,1000px);height:min(92vh,900px);display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #c8d4df">
+      <strong>Pré-visualização do Laudo Técnico</strong>
+      <button type="button" id="closePdfModal" class="btn outline">Fechar</button>
+    </div>
+    <iframe id="pdfPreviewFrame" title="Pré-visualização do PDF" style="border:0;flex:1;width:100%;background:#e9eef2"></iframe>
+    <div style="padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid #c8d4df">
+      <button type="button" id="downloadPdfModal" class="btn primary">Salvar / Baixar PDF</button>
+      <button type="button" id="whatsappPdfModal" class="btn secondary">Compartilhar no WhatsApp</button>
+      <span class="hint" style="align-self:center">No computador, talvez seja necessário anexar o PDF baixado na conversa do WhatsApp.</span>
+    </div>
+  </div>
+</div>
+<div id="printReport"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script>
 const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbw5sjvGBtdajZDLmgdfoIcWyTqea29hyLPFTyDg0-AnY2oW-alJSdc_3ZDVKem-GxNhXQ/exec';
 const today=new Date();document.getElementById('data').value=new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);function gerarNumeroLaudo(){const d=new Date();const pad=n=>String(n).padStart(2,'0');return 'LT-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())}document.getElementById('laudo').value=gerarNumeroLaudo();function syncHeader(){document.getElementById('headerLaudo').textContent=document.getElementById('laudo').value||'LT-';document.getElementById('headerData').textContent=document.getElementById('data').value?new Date(document.getElementById('data').value+'T12:00:00').toLocaleDateString('pt-BR'):''}document.getElementById('laudo').addEventListener('input',syncHeader);document.getElementById('data').addEventListener('change',syncHeader);syncHeader();
@@ -104,7 +118,48 @@ async function makePdfBlob() {
 }
 
 document.getElementById('sharePdf').onclick=async()=>{const status=document.getElementById('status');try{status.textContent='Preparando PDF para compartilhar...';const blob=await makePdfBlob();const file=new File([blob],(val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf',{type:'application/pdf'});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Laudo Técnico Reis Office',text:'Laudo técnico do equipamento serial '+(val('serial')||'')});status.textContent='Menu de compartilhamento aberto.'}else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name;a.click();status.textContent='PDF baixado. Anexe o arquivo manualmente no WhatsApp.';window.open('https://wa.me/?text='+encodeURIComponent('Segue o laudo técnico do equipamento serial '+(val('serial')||'')+'.'),'_blank')}}catch(e){status.textContent='Não foi possível compartilhar: '+e.message;alert(e.message)}};
-document.getElementById('previewPdf').onclick=()=>{buildReport();document.getElementById('status').textContent='Na janela de impressão, escolha “Salvar como PDF” para guardar no dispositivo.';window.print()};
+let currentPdfBlob=null,currentPdfUrl=null;
+function openPdfModal(blob){
+  const modal=document.getElementById('pdfModal');
+  if(currentPdfUrl)URL.revokeObjectURL(currentPdfUrl);
+  currentPdfBlob=blob;currentPdfUrl=URL.createObjectURL(blob);
+  document.getElementById('pdfPreviewFrame').src=currentPdfUrl;
+  modal.classList.remove('hide');modal.style.display='flex';
+}
+function closePdfModal(){
+  const modal=document.getElementById('pdfModal');modal.classList.add('hide');modal.style.display='none';
+  document.getElementById('pdfPreviewFrame').src='about:blank';
+  if(currentPdfUrl){URL.revokeObjectURL(currentPdfUrl);currentPdfUrl=null;}currentPdfBlob=null;
+}
+function pdfFilename(){return (val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf'}
+document.getElementById('closePdfModal').onclick=closePdfModal;
+document.getElementById('pdfModal').addEventListener('click',e=>{if(e.target.id==='pdfModal')closePdfModal()});
+document.getElementById('previewPdf').onclick=async()=>{
+  const status=document.getElementById('status');
+  try{status.textContent='Gerando pré-visualização do PDF...';const blob=await makePdfBlob();openPdfModal(blob);status.textContent='PDF pronto. Você pode salvar ou compartilhar no WhatsApp.'}
+  catch(e){status.textContent='Não foi possível gerar o PDF: '+e.message;alert('Não foi possível gerar o PDF: '+e.message)}
+};
+document.getElementById('downloadPdfModal').onclick=()=>{
+  if(!currentPdfBlob)return;
+  const a=document.createElement('a');a.href=currentPdfUrl;a.download=pdfFilename();document.body.appendChild(a);a.click();a.remove();
+  document.getElementById('status').textContent='Download do PDF iniciado.';
+};
+document.getElementById('whatsappPdfModal').onclick=async()=>{
+  if(!currentPdfBlob)return;
+  const status=document.getElementById('status');
+  const file=new File([currentPdfBlob],pdfFilename(),{type:'application/pdf'});
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Laudo Técnico Reis Office',text:'Laudo técnico do equipamento serial '+(val('serial')||'')});
+      status.textContent='Selecione o WhatsApp no menu de compartilhamento para enviar o PDF.';
+    }else{
+      const a=document.createElement('a');a.href=currentPdfUrl;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+      window.open('https://wa.me/?text='+encodeURIComponent('Segue o laudo técnico do equipamento serial '+(val('serial')||'.')+'.'),'_blank');
+      status.textContent='PDF baixado e WhatsApp aberto. Anexe o PDF baixado na conversa.';
+      alert('O PDF foi baixado e o WhatsApp foi aberto. Por segurança, em computadores o navegador não consegue anexar o arquivo automaticamente: clique no clipe do WhatsApp e selecione o PDF baixado.');
+    }
+  }catch(e){if(e.name!=='AbortError'){status.textContent='Não foi possível compartilhar: '+e.message;alert('Não foi possível compartilhar: '+e.message)}}
+};
 document.getElementById('driveBtn').onclick=async()=>{const status=document.getElementById('status');try{if(!APPS_SCRIPT_URL||APPS_SCRIPT_URL.includes('COLE_AQUI'))throw new Error('Configure a URL do Apps Script no arquivo index.html.');status.textContent='Gerando PDF e enviando ao Google Drive...';const blob=await makePdfBlob();const reader=new FileReader();const base64=await new Promise((resolve,reject)=>{reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(blob)});const payload={action:'savePdf',filename:(val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf',serial:val('serial'),laudo:val('laudo'),pdf:base64};const form=document.createElement('form');form.method='POST';form.action=APPS_SCRIPT_URL;form.target='driveSaveFrame';const frame=document.createElement('iframe');frame.name='driveSaveFrame';frame.style.display='none';document.body.appendChild(frame);document.body.appendChild(form);Object.entries(payload).forEach(([k,v])=>{const i=document.createElement('input');i.type='hidden';i.name=k;i.value=v;form.appendChild(i)});form.submit();status.textContent='Solicitação enviada. Verifique a pasta Laudos Técnicos no Google Drive em alguns instantes.';setTimeout(()=>{form.remove();frame.remove()},5000)}catch(e){status.textContent=e.message;alert(e.message)}};
 document.getElementById('saveDraft').onclick=()=>{const d={};document.querySelectorAll('input:not([type=file]),select,textarea').forEach(e=>d[e.id]=e.value);try{localStorage.setItem('reisOfficeLaudoDraft',JSON.stringify(d));document.getElementById('status').textContent='Rascunho salvo neste navegador. As fotos não são incluídas no rascunho.'}catch(e){alert('Não foi possível salvar o rascunho neste navegador.')}};
 </script></body></html>
