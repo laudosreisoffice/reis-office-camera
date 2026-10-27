@@ -110,14 +110,14 @@ async function makePdfBlob() {
     throw new Error('O relatório está vazio. Confira os dados antes de gerar o PDF.');
   }
   if (typeof window.html2pdf !== 'function') {
-    throw new Error('A biblioteca de PDF não carregou. Confirme que publicou a versão 20, faça Ctrl+F5 e verifique se a rede permite cdnjs/jsDelivr/unpkg.');
+    throw new Error('A biblioteca de PDF não carregou. Confirme que publicou a versão 21, faça Ctrl+F5 e verifique se a rede permite cdnjs/jsDelivr/unpkg.');
   }
 
   // A biblioteca instalada é html2pdf.bundle, que já inclui html2canvas e jsPDF.
   // Capturamos uma cópia mensurável do relatório para evitar o elemento oculto da tela.
   const stage = document.createElement('div');
   Object.assign(stage.style, {
-    position: 'fixed', left: '50%', top: '0', width: '794px', transform: 'translateX(-50%)',
+    position: 'fixed', left: '50%', top: '0', width: '733px', transform: 'translateX(-50%)',
     margin: '0', padding: '0', background: '#fff',
     zIndex: '2147483000', visibility: 'visible', opacity: '1',
     pointerEvents: 'none'
@@ -126,8 +126,8 @@ async function makePdfBlob() {
   const clone = report.cloneNode(true);
   clone.removeAttribute('id');
   Object.assign(clone.style, {
-    display: 'block', position: 'relative', width: '794px',
-    minWidth: '794px', maxWidth: '794px', height: 'auto',
+    display: 'block', position: 'relative', width: '733px',
+    minWidth: '733px', maxWidth: '733px', height: 'auto',
     margin: '0 auto', padding: '0', overflow: 'visible',
     background: '#fff', color: '#182c2d', visibility: 'visible',
     opacity: '1', transform: 'none'
@@ -135,8 +135,8 @@ async function makePdfBlob() {
 
   const clonePages = Array.from(clone.querySelectorAll('.printPage'));
   clonePages.forEach((p, i) => Object.assign(p.style, {
-    display: 'block', position: 'relative', width: '794px',
-    minWidth: '794px', maxWidth: '794px', height: 'auto',
+    display: 'block', position: 'relative', width: '733px',
+    minWidth: '733px', maxWidth: '733px', height: 'auto',
     minHeight: '0', margin: '0 auto', padding: '28px',
     boxSizing: 'border-box', overflow: 'visible',
     background: '#fff', color: '#182c2d', visibility: 'visible',
@@ -172,8 +172,8 @@ async function makePdfBlob() {
       html2canvas: {
         scale: 1.5, useCORS: true, allowTaint: false,
         backgroundColor: '#ffffff', logging: false,
-        scrollX: 0, scrollY: 0, windowWidth: 794,
-        width: Math.ceil(bounds.width)
+        scrollX: 0, scrollY: 0, windowWidth: 733,
+        width: 733
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
       pagebreak: { mode: ['css', 'legacy'], avoid: ['table', 'tr', 'img', '.printPhoto'] }
