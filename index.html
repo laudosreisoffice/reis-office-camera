@@ -49,7 +49,39 @@
   </div>
 </div>
 <div id="printReport"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script>
+<script>
+/* Carrega html2pdf por mais de uma CDN, caso uma delas esteja bloqueada. */
+let html2pdfLoadPromise = null;
+function ensureHtml2Pdf() {
+  if (typeof window.html2pdf === 'function') return Promise.resolve(window.html2pdf);
+  if (html2pdfLoadPromise) return html2pdfLoadPromise;
+  const sources = [
+    'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+    'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
+    'https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+  ];
+  html2pdfLoadPromise = (async () => {
+    for (const src of sources) {
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          const timer = setTimeout(() => { script.remove(); reject(new Error('Tempo esgotado')); }, 12000);
+          script.src = src;
+          script.async = true;
+          script.onload = () => { clearTimeout(timer); resolve(); };
+          script.onerror = () => { clearTimeout(timer); script.remove(); reject(new Error('Falha ao carregar CDN')); };
+          document.head.appendChild(script);
+        });
+        if (typeof window.html2pdf === 'function') return window.html2pdf;
+      } catch (e) {
+        // Tenta a próxima CDN.
+      }
+    }
+    html2pdfLoadPromise = null;
+    throw new Error('Não foi possível carregar a biblioteca de PDF por nenhuma fonte. Verifique a conexão ou bloqueios de CDN e tente novamente.');
+  })();
+  return html2pdfLoadPromise;
+}
 const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbw5sjvGBtdajZDLmgdfoIcWyTqea29hyLPFTyDg0-AnY2oW-alJSdc_3ZDVKem-GxNhXQ/exec';
 const today=new Date();document.getElementById('data').value=new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);function gerarNumeroLaudo(){const d=new Date();const pad=n=>String(n).padStart(2,'0');return 'LT-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())}document.getElementById('laudo').value=gerarNumeroLaudo();function syncHeader(){document.getElementById('headerLaudo').textContent=document.getElementById('laudo').value||'LT-';document.getElementById('headerData').textContent=document.getElementById('data').value?new Date(document.getElementById('data').value+'T12:00:00').toLocaleDateString('pt-BR'):''}document.getElementById('laudo').addEventListener('input',syncHeader);document.getElementById('data').addEventListener('change',syncHeader);syncHeader();
 const tests=['Ligando','LCD','Webcam','Teclado','Touchpad','USB','USB-C','HDMI','Wi-Fi','Bluetooth','Ethernet','Alto-falantes','Microfone','Carregador','Bateria'];const cats=['Frente','Tela','Base inferior','Teclado','Etiqueta / Serial','Carregador','Lateral esquerda','Lateral direita'];const photos={};
@@ -69,6 +101,7 @@ registerBtn.onclick=()=>{if(!val('serial').trim()){alert('Informe o serial antes
 function submitAppsScriptForm(payload,message){const status=document.getElementById('status');status.textContent=message;const frame=document.createElement('iframe');frame.name='appsScriptSubmitFrame';frame.style.display='none';document.body.appendChild(frame);const form=document.createElement('form');form.method='POST';form.action=APPS_SCRIPT_URL;form.target=frame.name;form.style.display='none';Object.entries(payload).forEach(([k,v])=>{const input=document.createElement('input');input.name=k;input.value=v??'';form.appendChild(input)});document.body.appendChild(form);const handler=(event)=>{if(event.data&&event.data.type==='reisOfficeAppsScript'){window.removeEventListener('message',handler);const r=event.data.result||{};status.textContent=r.ok?(r.message||'Operação concluída.'):('Não foi possível cadastrar: '+(r.error||'erro desconhecido'));if(r.ok)showManualRegister(false);else alert(status.textContent);}};window.addEventListener('message',handler);form.submit();setTimeout(()=>{window.removeEventListener('message',handler);form.remove();frame.remove()},15000)}
 
 async function makePdfBlob() {
+  await ensureHtml2Pdf();
   buildReport();
 
   const report = document.getElementById('printReport');
@@ -77,7 +110,7 @@ async function makePdfBlob() {
     throw new Error('O relatório está vazio. Confira os dados antes de gerar o PDF.');
   }
   if (typeof window.html2pdf !== 'function') {
-    throw new Error('A biblioteca de PDF não carregou. Verifique a conexão e atualize a página.');
+    throw new Error('A biblioteca de PDF não carregou. Confirme que publicou a versão 19, faça Ctrl+F5 e verifique se a rede permite cdnjs/jsDelivr/unpkg.');
   }
 
   // A biblioteca instalada é html2pdf.bundle, que já inclui html2canvas e jsPDF.
