@@ -71,111 +71,170 @@ function submitAppsScriptForm(payload,message){const status=document.getElementB
 
 async function makePdfBlob() {
   buildReport();
+
   const report = document.getElementById('printReport');
   const pages = report ? Array.from(report.querySelectorAll('.printPage')) : [];
+
   if (typeof window.html2pdf !== 'function') {
     throw new Error('A biblioteca de PDF não carregou. Atualize a página e tente novamente.');
   }
-  if (!pages.length || !pages.some(p => p.innerText.trim())) {
-    throw new Error('O relatório está vazio. Verifique os dados antes de gerar o PDF.');
+  if (!report || !pages.length || !pages.some(p => p.innerText.trim())) {
+    throw new Error('O relatório está vazio. Confira os dados antes de gerar o PDF.');
   }
 
   const oldReportStyle = report.getAttribute('style');
   const oldPageStyles = pages.map(p => p.getAttribute('style'));
+
+  // Capture o relatório inteiro em um único fluxo do html2pdf.
+  // Não converte cada seção em canvas separado nem fatia imagens manualmente.
   Object.assign(report.style, {
-    display: 'block', position: 'fixed', left: '0', top: '0',
-    width: '794px', maxWidth: '794px', height: 'auto',
-    overflow: 'visible', background: '#ffffff', color: '#182c2d',
-    zIndex: '2147483000', pointerEvents: 'none', opacity: '1',
-    visibility: 'visible', margin: '0', padding: '0'
+    display: 'block',
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '794px',
+    minWidth: '794px',
+    maxWidth: '794px',
+    height: 'auto',
+    margin: '0',
+    padding: '0',
+    overflow: 'visible',
+    background: '#ffffff',
+    color: '#182c2d',
+    zIndex: '2147483000',
+    pointerEvents: 'none',
+    opacity: '1',
+    visibility: 'visible'
   });
-  pages.forEach(page => Object.assign(page.style, {
-    display: 'block', position: 'relative', width: '794px',
-    maxWidth: '794px', minHeight: '0', height: 'auto',
-    margin: '0', padding: '38px', boxSizing: 'border-box',
-    overflow: 'visible', background: '#ffffff', color: '#182c2d',
-    pageBreakAfter: 'auto', breakAfter: 'auto'
-  }));
+
+  pages.forEach((page, index) => {
+    Object.assign(page.style, {
+      display: 'block',
+      position: 'relative',
+      width: '794px',
+      minWidth: '794px',
+      maxWidth: '794px',
+      height: 'auto',
+      minHeight: '0',
+      margin: '0',
+      padding: '38px',
+      boxSizing: 'border-box',
+      overflow: 'visible',
+      background: '#ffffff',
+      color: '#182c2d',
+      opacity: '1',
+      visibility: 'visible',
+      pageBreakAfter: index < pages.length - 1 ? 'always' : 'auto',
+      breakAfter: index < pages.length - 1 ? 'page' : 'auto'
+    });
+  });
 
   try {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 300))));
-    // Capture every report article at its natural width. Do not slice tall canvases:
-    // slicing was causing the left/right crop and blank pages seen in the preview.
-    let pdf = null;
-    const pageWidthMm = 210, pageHeightMm = 297, marginMm = 8;
-    const usableWidth = pageWidthMm - marginMm * 2;
-    const usableHeight = pageHeightMm - marginMm * 2;
+    await new Promise(resolve =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => setTimeout(resolve, 300))
+      )
+    );
 
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i];
-      const worker = html2pdf().set({
-        margin: 0,
-        image: { type: 'jpeg', quality: 0.96 },
-        html2canvas: {
-          scale: 2,
-          backgroundColor: '#ffffff',
-          logging: false,
-          useCORS: true,
-          allowTaint: false,
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: 794,
-          onclone: clonedDoc => {
-            const clonedReport = clonedDoc.getElementById('printReport');
-            if (clonedReport) {
-              Object.assign(clonedReport.style, {
-                display: 'block', position: 'static', left: 'auto', top: 'auto',
-                width: '794px', maxWidth: '794px', height: 'auto',
-                margin: '0', padding: '0', overflow: 'visible',
-                opacity: '1', visibility: 'visible'
-              });
-            }
-            clonedDoc.querySelectorAll('#printReport .printPage').forEach((el, index) => {
-              Object.assign(el.style, {
-                display: index === i ? 'block' : 'none',
-                position: 'relative', left: 'auto', top: 'auto',
-                width: '794px', maxWidth: '794px', minHeight: '0', height: 'auto',
-                margin: '0', padding: '38px', boxSizing: 'border-box',
-                overflow: 'visible', background: '#ffffff', opacity: '1', visibility: 'visible'
-              });
+    // Aguarda logotipo e fotos carregarem antes da captura.
+    await Promise.all(Array.from(report.querySelectorAll('img')).map(img => {
+      if (img.complete) {
+        return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
+      }
+      return new Promise(resolve => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
+    }));
+
+    const worker = window.html2pdf().set({
+      margin: [8, 8, 8, 8],
+      filename: `${val('laudo') || 'Laudo'}_${val('serial') || 'sem_serial'}.pdf`,
+      image: { type: 'jpeg', quality: 0.96 },
+      html2canvas: {
+        scale: 1.5,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 794,
+        onclone: clonedDoc => {
+          const clonedReport = clonedDoc.getElementById('printReport');
+          if (clonedReport) {
+            Object.assign(clonedReport.style, {
+              display: 'block',
+              position: 'static',
+              left: 'auto',
+              top: 'auto',
+              width: '794px',
+              minWidth: '794px',
+              maxWidth: '794px',
+              height: 'auto',
+              margin: '0',
+              padding: '0',
+              overflow: 'visible',
+              opacity: '1',
+              visibility: 'visible',
+              transform: 'none'
             });
           }
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true }
-      }).from(page).toCanvas();
-
-      const canvas = await worker.get('canvas');
-      if (!canvas || canvas.width < 100 || canvas.height < 100) {
-        throw new Error('Não foi possível capturar a página ' + (i + 1) + ' do laudo.');
+          clonedDoc.querySelectorAll('#printReport .printPage').forEach((page, index, all) => {
+            Object.assign(page.style, {
+              display: 'block',
+              position: 'relative',
+              width: '794px',
+              minWidth: '794px',
+              maxWidth: '794px',
+              height: 'auto',
+              minHeight: '0',
+              margin: '0',
+              padding: '38px',
+              boxSizing: 'border-box',
+              overflow: 'visible',
+              background: '#ffffff',
+              color: '#182c2d',
+              transform: 'none',
+              pageBreakAfter: index < all.length - 1 ? 'always' : 'auto',
+              breakAfter: index < all.length - 1 ? 'page' : 'auto'
+            });
+          });
+        }
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait',
+        compress: true
+      },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+        before: '.forcePageBreak',
+        avoid: ['.printTable', '.printPhoto']
       }
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.96);
-      const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-      const imageWidthMm = canvas.width * ratio;
-      const imageHeightMm = canvas.height * ratio;
-      const x = (pageWidthMm - imageWidthMm) / 2;
-      const y = marginMm + (usableHeight - imageHeightMm) / 2;
+    });
 
-      if (!pdf) {
-        const pdfWorker = worker.toPdf();
-        pdf = await pdfWorker.get('pdf');
-        while (pdf.getNumberOfPages() > 0) pdf.deletePage(pdf.getNumberOfPages());
-      }
-      pdf.addPage('a4', 'portrait');
-      pdf.addImage(dataUrl, 'JPEG', x, y, imageWidthMm, imageHeightMm, undefined, 'FAST');
+    const pdfWorker = worker.from(report).toPdf();
+    const pdf = await pdfWorker.get('pdf');
+
+    if (!pdf || pdf.getNumberOfPages() < 1) {
+      throw new Error('O gerador não criou páginas para o laudo.');
     }
 
-    if (!pdf || pdf.getNumberOfPages() !== pages.length) {
-      throw new Error('A quantidade de páginas do PDF não corresponde ao laudo.');
-    }
     const blob = pdf.output('blob');
-    if (!blob || blob.size < 1000) throw new Error('O PDF gerado está vazio ou inválido.');
+    if (!blob || blob.size < 1000) {
+      throw new Error('O PDF gerado está vazio ou inválido. Tente novamente.');
+    }
+
     return blob;
   } finally {
     if (oldReportStyle === null) report.removeAttribute('style');
     else report.setAttribute('style', oldReportStyle);
-    pages.forEach((page, i) => {
-      if (oldPageStyles[i] === null) page.removeAttribute('style');
-      else page.setAttribute('style', oldPageStyles[i]);
+
+    pages.forEach((page, index) => {
+      if (oldPageStyles[index] === null) page.removeAttribute('style');
+      else page.setAttribute('style', oldPageStyles[index]);
     });
   }
 }
