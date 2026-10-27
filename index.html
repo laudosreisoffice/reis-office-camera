@@ -107,32 +107,32 @@ async function makePdfBlob() {
   const report = document.getElementById('printReport');
   const page = report && report.querySelector('.printPage');
   if (typeof window.html2pdf !== 'function') {
-    throw new Error('A biblioteca html2pdf não carregou. Verifique a conexão com a internet ou bloqueios do navegador.');
+    throw new Error('A biblioteca html2pdf não carregou. Verifique a conexão com a internet e tente novamente.');
   }
   if (!page || !page.innerText.trim()) {
     throw new Error('O relatório está vazio. Verifique os dados antes de gerar o PDF.');
   }
 
-  const originalStyle = report.getAttribute('style');
-  const originalClass = report.className;
+  const oldReportStyle = report.getAttribute('style');
+  const oldPageStyle = page.getAttribute('style');
   Object.assign(report.style, {
     display: 'block', position: 'fixed', left: '0', top: '0',
     width: '794px', maxWidth: '794px', height: 'auto',
     overflow: 'visible', background: '#ffffff', color: '#182c2d',
     zIndex: '2147483000', pointerEvents: 'none', opacity: '1',
-    visibility: 'visible'
+    visibility: 'visible', margin: '0', padding: '0'
+  });
+  Object.assign(page.style, {
+    display: 'block', position: 'relative',
+    width: '794px', maxWidth: '794px',
+    minHeight: '1123px', height: 'auto',
+    margin: '0', padding: '38px',
+    boxSizing: 'border-box', overflow: 'visible',
+    background: '#ffffff', opacity: '1', visibility: 'visible'
   });
 
   try {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 350))));
-    const images = Array.from(page.querySelectorAll('img'));
-    await Promise.all(images.map(img => {
-      if (img.complete) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
-      return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
-    }));
-
-    // html2pdf.bundle já inclui html2canvas e jsPDF. Use o pipeline interno,
-    // sem depender de window.html2canvas ou window.jspdf globais.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 300))));
     const worker = html2pdf().set({
       margin: 0,
       filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
@@ -144,21 +144,26 @@ async function makePdfBlob() {
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 1200,
+        windowWidth: 794,
+        windowHeight: 1123,
         onclone: clonedDoc => {
           const clonedReport = clonedDoc.getElementById('printReport');
           const clonedPage = clonedDoc.querySelector('#printReport .printPage');
           if (clonedReport) {
             Object.assign(clonedReport.style, {
               display: 'block', position: 'static', left: 'auto', top: 'auto',
-              width: '794px', height: 'auto', overflow: 'visible',
+              width: '794px', maxWidth: '794px', height: 'auto',
+              margin: '0', padding: '0', overflow: 'visible',
               opacity: '1', visibility: 'visible', zIndex: 'auto'
             });
           }
           if (clonedPage) {
             Object.assign(clonedPage.style, {
-              display: 'block', position: 'relative', width: '794px',
-              height: 'auto', minHeight: '0', overflow: 'visible',
+              display: 'block', position: 'relative',
+              width: '794px', maxWidth: '794px',
+              minHeight: '1123px', height: 'auto',
+              margin: '0', padding: '38px',
+              boxSizing: 'border-box', overflow: 'visible',
               opacity: '1', visibility: 'visible', background: '#ffffff'
             });
           }
@@ -170,21 +175,56 @@ async function makePdfBlob() {
 
     const canvas = await worker.get('canvas');
     if (!canvas || canvas.width < 100 || canvas.height < 100) {
-      throw new Error('A captura do relatório ficou vazia. Verifique se o navegador está bloqueando a biblioteca.');
+      throw new Error('A captura do relatório ficou vazia. Tente novamente.');
     }
 
-    // Use the canvas created by html2pdf and its bundled jsPDF instance.
     const pdfWorker = worker.toPdf();
     const pdf = await pdfWorker.get('pdf');
-    const blob = pdf.output('blob');
-    if (!blob || blob.size < 1000) {
-      throw new Error('O PDF gerado está vazio ou inválido. Atualize a página e tente novamente.');
+    // Fit the entire report width into the printable A4 width, keeping aspect ratio.
+    const pageWidthMm = 210;
+    const pageHeightMm = 297;
+    const marginMm = 8;
+    const usableWidth = pageWidthMm - marginMm * 2;
+    const usableHeight = pageHeightMm - marginMm * 2;
+    const imgData = canvas.toDataURL('image/jpeg', 0.96);
+    const imageHeightMm = canvas.height * usableWidth / canvas.width;
+
+    // Clear the page produced by html2pdf and place the image at a known A4 size.
+    pdf.deletePage(1);
+    let y = marginMm;
+    let remainingPx = canvas.height;
+    let sourceY = 0;
+    const pxPerMm = canvas.width / usableWidth;
+    const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
+
+    // Split tall reports into A4-height slices so the right/left edges never get clipped.
+    while (remainingPx > 0) {
+      const thisHeightPx = Math.min(sliceHeightPx, remainingPx);
+      const slice = document.createElement('canvas');
+      slice.width = canvas.width;
+      slice.height = thisHeightPx;
+      slice.getContext('2d').drawImage(
+        canvas, 0, sourceY, canvas.width, thisHeightPx,
+        0, 0, canvas.width, thisHeightPx
+      );
+      if (pdf.getNumberOfPages() > 0) pdf.addPage('a4', 'portrait');
+      const heightMm = thisHeightPx / pxPerMm;
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.96), 'JPEG', marginMm, marginMm, usableWidth, heightMm, undefined, 'FAST');
+      sourceY += thisHeightPx;
+      remainingPx -= thisHeightPx;
     }
+    if (pdf.getNumberOfPages() === 0) {
+      pdf.addPage('a4', 'portrait');
+      pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableWidth, Math.min(imageHeightMm, usableHeight), undefined, 'FAST');
+    }
+    const blob = pdf.output('blob');
+    if (!blob || blob.size < 1000) throw new Error('O PDF gerado está vazio ou inválido.');
     return blob;
   } finally {
-    if (originalStyle === null) report.removeAttribute('style');
-    else report.setAttribute('style', originalStyle);
-    report.className = originalClass;
+    if (oldReportStyle === null) report.removeAttribute('style');
+    else report.setAttribute('style', oldReportStyle);
+    if (oldPageStyle === null) page.removeAttribute('style');
+    else page.setAttribute('style', oldPageStyle);
   }
 }
 
