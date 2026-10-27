@@ -104,7 +104,7 @@ async function makePdfBlob() {
       return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
     }));
 
-    const worker = html2pdf().set({
+    const pdf = await html2pdf().set({
       margin: 0,
       filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
       image: { type: 'jpeg', quality: 0.95 },
@@ -139,12 +139,14 @@ async function makePdfBlob() {
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
-    }).from(report).outputPdf('blob');
+    }).from(report).toPdf().get('pdf');
 
-    if (!worker || worker.size < 1000 || worker.type !== 'application/pdf') {
+    // html2pdf retorna um objeto jsPDF; converta explicitamente para Blob.
+    const blob = pdf.output('blob');
+    if (!blob || blob.size < 1000) {
       throw new Error('O PDF foi gerado vazio ou inválido. Tente novamente após recarregar a página.');
     }
-    return worker;
+    return blob;
   } finally {
     if (originalStyle === null) report.removeAttribute('style');
     else report.setAttribute('style', originalStyle);
