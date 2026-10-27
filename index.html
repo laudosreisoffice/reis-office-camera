@@ -70,87 +70,161 @@ function submitAppsScriptForm(payload,message){const status=document.getElementB
 
 async function makePdfBlob() {
   buildReport();
+
   const report = document.getElementById('printReport');
   const page = report && report.querySelector('.printPage');
+
   if (typeof window.html2pdf !== 'function') {
-    throw new Error('A biblioteca html2pdf não carregou. Verifique a conexão com a internet ou bloqueios do navegador.');
+    throw new Error('A biblioteca de PDF não carregou. Atualize a página e tente novamente.');
   }
-  if (!page || !page.innerText.trim()) {
-    throw new Error('O relatório está vazio. Verifique os dados antes de gerar o PDF.');
+  if (!report || !page || !page.innerText.trim()) {
+    throw new Error('O relatório está vazio. Confira os dados antes de gerar o PDF.');
   }
 
-  const originalStyle = report.getAttribute('style');
-  const originalClass = report.className;
+  const savedReportStyle = report.getAttribute('style');
+  const savedPageStyles = Array.from(report.querySelectorAll('.printPage')).map(p => p.getAttribute('style'));
+
+  // Capture at a stable CSS width of 794px (approximately A4 at 96dpi).
+  // Do not impose A4 millimeter widths on the DOM while html2canvas is measuring pixels.
   Object.assign(report.style, {
-    display: 'block', position: 'fixed', left: '0', top: '0',
-    width: '794px', maxWidth: '794px', height: 'auto',
-    overflow: 'visible', background: '#ffffff', color: '#182c2d',
-    zIndex: '2147483000', pointerEvents: 'none', opacity: '1',
-    visibility: 'visible'
+    display: 'block',
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '794px',
+    minWidth: '0',
+    maxWidth: '794px',
+    height: 'auto',
+    margin: '0',
+    padding: '0',
+    overflow: 'visible',
+    background: '#ffffff',
+    color: '#182c2d',
+    zIndex: '2147483000',
+    pointerEvents: 'none',
+    opacity: '1',
+    visibility: 'visible',
+    transform: 'none'
   });
 
+  const pages = Array.from(report.querySelectorAll('.printPage'));
+  pages.forEach(p => Object.assign(p.style, {
+    display: 'block',
+    position: 'relative',
+    width: '794px',
+    minWidth: '0',
+    maxWidth: '794px',
+    height: 'auto',
+    minHeight: '0',
+    margin: '0',
+    padding: '28px',
+    boxSizing: 'border-box',
+    overflow: 'visible',
+    background: '#ffffff',
+    color: '#182c2d',
+    transform: 'none'
+  }));
+
   try {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 350))));
-    const images = Array.from(page.querySelectorAll('img'));
-    await Promise.all(images.map(img => {
+    await new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 250)))
+    );
+
+    await Promise.all(Array.from(report.querySelectorAll('img')).map(img => {
       if (img.complete) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
-      return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+      return new Promise(resolve => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
     }));
 
-    // html2pdf.bundle já inclui html2canvas e jsPDF. Use o pipeline interno,
-    // sem depender de window.html2canvas ou window.jspdf globais.
-    const worker = html2pdf().set({
-      margin: 0,
-      filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
+    const worker = window.html2pdf().set({
+      margin: [8, 8, 8, 8],
+      filename: `${val('laudo') || 'Laudo'}_${val('serial') || 'sem_serial'}.pdf`,
       image: { type: 'jpeg', quality: 0.96 },
       html2canvas: {
-        scale: 2,
+        scale: 1.25,
         useCORS: true,
+        allowTaint: false,
         backgroundColor: '#ffffff',
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 1200,
+        windowWidth: 794,
         onclone: clonedDoc => {
           const clonedReport = clonedDoc.getElementById('printReport');
-          const clonedPage = clonedDoc.querySelector('#printReport .printPage');
           if (clonedReport) {
             Object.assign(clonedReport.style, {
-              display: 'block', position: 'static', left: 'auto', top: 'auto',
-              width: '794px', height: 'auto', overflow: 'visible',
-              opacity: '1', visibility: 'visible', zIndex: 'auto'
+              display: 'block',
+              position: 'static',
+              left: 'auto',
+              top: 'auto',
+              width: '794px',
+              minWidth: '0',
+              maxWidth: '794px',
+              height: 'auto',
+              margin: '0',
+              padding: '0',
+              overflow: 'visible',
+              opacity: '1',
+              visibility: 'visible',
+              transform: 'none'
             });
           }
-          if (clonedPage) {
-            Object.assign(clonedPage.style, {
-              display: 'block', position: 'relative', width: '794px',
-              height: 'auto', minHeight: '0', overflow: 'visible',
-              opacity: '1', visibility: 'visible', background: '#ffffff'
+          clonedDoc.querySelectorAll('#printReport .printPage').forEach(p => {
+            Object.assign(p.style, {
+              display: 'block',
+              position: 'relative',
+              width: '794px',
+              minWidth: '0',
+              maxWidth: '794px',
+              height: 'auto',
+              minHeight: '0',
+              margin: '0',
+              padding: '28px',
+              boxSizing: 'border-box',
+              overflow: 'visible',
+              background: '#ffffff',
+              color: '#182c2d',
+              transform: 'none'
             });
-          }
+          });
         }
       },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] }
-    }).from(page).toCanvas();
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait',
+        compress: true
+      },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+        avoid: ['table', 'tr', 'img']
+      }
+    });
 
-    const canvas = await worker.get('canvas');
-    if (!canvas || canvas.width < 100 || canvas.height < 100) {
-      throw new Error('A captura do relatório ficou vazia. Verifique se o navegador está bloqueando a biblioteca.');
+    // Feed the whole report container to html2pdf. It will scale the full 794px
+    // width into A4's printable width instead of cropping a pre-sliced canvas.
+    const pdfWorker = worker.from(report).toPdf();
+    const pdf = await pdfWorker.get('pdf');
+
+    if (!pdf || pdf.getNumberOfPages() < 1) {
+      throw new Error('O gerador não criou páginas para o laudo.');
     }
 
-    // Use the canvas created by html2pdf and its bundled jsPDF instance.
-    const pdfWorker = worker.toPdf();
-    const pdf = await pdfWorker.get('pdf');
     const blob = pdf.output('blob');
     if (!blob || blob.size < 1000) {
-      throw new Error('O PDF gerado está vazio ou inválido. Atualize a página e tente novamente.');
+      throw new Error('O PDF gerado está vazio ou inválido.');
     }
     return blob;
   } finally {
-    if (originalStyle === null) report.removeAttribute('style');
-    else report.setAttribute('style', originalStyle);
-    report.className = originalClass;
+    if (savedReportStyle === null) report.removeAttribute('style');
+    else report.setAttribute('style', savedReportStyle);
+
+    pages.forEach((p, i) => {
+      if (savedPageStyles[i] === null) p.removeAttribute('style');
+      else p.setAttribute('style', savedPageStyles[i]);
+    });
   }
 }
 
@@ -174,7 +248,7 @@ document.getElementById('pdfModal').addEventListener('click',e=>{if(e.target.id=
 document.getElementById('previewPdf').onclick=async()=>{
   const status=document.getElementById('status');
   try{
-    status.textContent='Gerando PDF para baixar...';
+    status.textContent='Gerando PDF A4 para baixar...';
     const blob=await makePdfBlob();
     if(!blob || blob.size < 1000) throw new Error('O arquivo gerado está vazio ou inválido.');
     const filename=(val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf';
