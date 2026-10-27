@@ -110,14 +110,14 @@ async function makePdfBlob() {
     throw new Error('O relatório está vazio. Confira os dados antes de gerar o PDF.');
   }
   if (typeof window.html2pdf !== 'function') {
-    throw new Error('A biblioteca de PDF não carregou. Confirme que publicou a versão 21, faça Ctrl+F5 e verifique se a rede permite cdnjs/jsDelivr/unpkg.');
+    throw new Error('A biblioteca de PDF não carregou. Confirme que publicou a versão 22, faça Ctrl+F5 e verifique se a rede permite cdnjs/jsDelivr/unpkg.');
   }
 
   // A biblioteca instalada é html2pdf.bundle, que já inclui html2canvas e jsPDF.
   // Capturamos uma cópia mensurável do relatório para evitar o elemento oculto da tela.
   const stage = document.createElement('div');
   Object.assign(stage.style, {
-    position: 'fixed', left: '50%', top: '0', width: '733px', transform: 'translateX(-50%)',
+    position: 'fixed', left: '0', top: '0', width: '733px', transform: 'none',
     margin: '0', padding: '0', background: '#fff',
     zIndex: '2147483000', visibility: 'visible', opacity: '1',
     pointerEvents: 'none'
