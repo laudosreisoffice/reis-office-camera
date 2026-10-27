@@ -74,33 +74,37 @@ async function makePdfBlob() {
   if (!window.html2pdf) throw new Error('Biblioteca PDF não carregada. Verifique sua conexão com a internet.');
   if (!report || !report.innerHTML.trim()) throw new Error('O relatório está vazio. Verifique os dados antes de gerar o PDF.');
 
-  const clone = report.cloneNode(true);
-  clone.removeAttribute('id');
-  Object.assign(clone.style, {
+  // Capture the actual report node, not a detached clone: some browsers render cloned
+  // nodes with blank pages when CSS/layout depends on the original document.
+  const originalStyle = report.getAttribute('style');
+  const originalClass = report.className;
+  Object.assign(report.style, {
     display: 'block',
     position: 'fixed',
     left: '0',
     top: '0',
     width: '794px',
     maxWidth: '794px',
+    height: 'auto',
+    overflow: 'visible',
     background: '#ffffff',
     color: '#182c2d',
-    zIndex: '99999',
+    zIndex: '2147483000',
     pointerEvents: 'none',
     opacity: '1',
-    visibility: 'visible',
-    overflow: 'visible'
+    visibility: 'visible'
   });
-  document.body.appendChild(clone);
+  report.classList.add('pdf-capture-active');
 
   try {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 250))));
-    const images = Array.from(clone.querySelectorAll('img'));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 400))));
+    const images = Array.from(report.querySelectorAll('img'));
     await Promise.all(images.map(img => {
       if (img.complete) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
       return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
     }));
-    const blob = await html2pdf().set({
+
+    const worker = html2pdf().set({
       margin: 0,
       filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
       image: { type: 'jpeg', quality: 0.95 },
@@ -109,19 +113,42 @@ async function makePdfBlob() {
         useCORS: true,
         allowTaint: false,
         backgroundColor: '#ffffff',
-        logging: false,
+        logging: true,
         scrollX: 0,
-        scrollY: 0
+        scrollY: 0,
+        windowWidth: 1200,
+        onclone: (clonedDoc) => {
+          const clonedReport = clonedDoc.getElementById('printReport');
+          if (clonedReport) {
+            clonedReport.style.display = 'block';
+            clonedReport.style.position = 'static';
+            clonedReport.style.width = '794px';
+            clonedReport.style.height = 'auto';
+            clonedReport.style.overflow = 'visible';
+            clonedReport.style.opacity = '1';
+            clonedReport.style.visibility = 'visible';
+          }
+          clonedDoc.querySelectorAll('.printPage').forEach(page => {
+            page.style.display = 'block';
+            page.style.position = 'relative';
+            page.style.visibility = 'visible';
+            page.style.opacity = '1';
+            page.style.background = '#ffffff';
+          });
+        }
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
-    }).from(clone).outputPdf('blob');
-    if (!blob || blob.size < 1000 || blob.type !== 'application/pdf') {
+    }).from(report).outputPdf('blob');
+
+    if (!worker || worker.size < 1000 || worker.type !== 'application/pdf') {
       throw new Error('O PDF foi gerado vazio ou inválido. Tente novamente após recarregar a página.');
     }
-    return blob;
+    return worker;
   } finally {
-    clone.remove();
+    if (originalStyle === null) report.removeAttribute('style');
+    else report.setAttribute('style', originalStyle);
+    report.className = originalClass;
   }
 }
 
