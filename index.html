@@ -212,9 +212,18 @@ function printReportNative(){
   const w = window.open('', '_blank');
   if (!w) { alert('O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente novamente.'); return; }
   w.document.open();
-  w.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Laudo Técnico</title><style>'+css+'</style></head><body>'+report.innerHTML+'</body></html>');
+  w.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Laudo Técnico</title><style>'+css+'</style></head><body><div id="printReport">'+report.innerHTML+'</div></body></html>');
   w.document.close();
-  w.onload = () => setTimeout(() => { w.focus(); w.print(); }, 400);
+  w.onload = () => setTimeout(() => {
+    // Aguarda imagens, fontes e layout antes de abrir a pré-visualização.
+    const imgs = Array.from(w.document.images);
+    Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => {
+      img.onload = resolve; img.onerror = resolve;
+    }))).then(() => {
+      w.focus();
+      w.print();
+    });
+  }, 700);
 }
 document.getElementById('sharePdf').onclick=async()=>{const status=document.getElementById('status');try{status.textContent='Preparando PDF para compartilhar...';const blob=await makePdfBlob();const file=new File([blob],(val('laudo')||'Laudo')+'_'+(val('serial')||'sem_serial')+'.pdf',{type:'application/pdf'});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Laudo Técnico Reis Office',text:'Laudo técnico do equipamento serial '+(val('serial')||'')});status.textContent='Menu de compartilhamento aberto.'}else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name;a.click();status.textContent='PDF baixado. Anexe o arquivo manualmente no WhatsApp.';window.open('https://wa.me/?text='+encodeURIComponent('Segue o laudo técnico do equipamento serial '+(val('serial')||'')+'.'),'_blank')}}catch(e){status.textContent='Não foi possível compartilhar: '+e.message;alert(e.message)}};
 let currentPdfBlob=null,currentPdfUrl=null;
