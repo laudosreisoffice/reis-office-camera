@@ -72,8 +72,8 @@ async function makePdfBlob() {
   buildReport();
   const report = document.getElementById('printReport');
   const page = report && report.querySelector('.printPage');
-  if (!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF) {
-    throw new Error('As bibliotecas de captura/PDF não foram carregadas. Atualize a página e tente novamente.');
+  if (typeof window.html2pdf !== 'function') {
+    throw new Error('A biblioteca html2pdf não carregou. Verifique a conexão com a internet ou bloqueios do navegador.');
   }
   if (!page || !page.innerText.trim()) {
     throw new Error('O relatório está vazio. Verifique os dados antes de gerar o PDF.');
@@ -90,68 +90,62 @@ async function makePdfBlob() {
   });
 
   try {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 300))));
-    const canvas = await window.html2canvas(page, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      allowTaint: false,
-      logging: false,
-      width: page.scrollWidth,
-      height: page.scrollHeight,
-      windowWidth: Math.max(document.documentElement.clientWidth, 1200),
-      onclone: clonedDoc => {
-        const clonedReport = clonedDoc.getElementById('printReport');
-        if (clonedReport) {
-          clonedReport.style.setProperty('display', 'block', 'important');
-          clonedReport.style.setProperty('position', 'static', 'important');
-          clonedReport.style.setProperty('width', '794px', 'important');
-          clonedReport.style.setProperty('height', 'auto', 'important');
-          clonedReport.style.setProperty('overflow', 'visible', 'important');
-          clonedReport.style.setProperty('visibility', 'visible', 'important');
-        }
-        const clonedPage = clonedDoc.querySelector('#printReport .printPage');
-        if (clonedPage) {
-          clonedPage.style.setProperty('display', 'block', 'important');
-          clonedPage.style.setProperty('position', 'relative', 'important');
-          clonedPage.style.setProperty('width', '794px', 'important');
-          clonedPage.style.setProperty('min-height', '0', 'important');
-          clonedPage.style.setProperty('height', 'auto', 'important');
-          clonedPage.style.setProperty('visibility', 'visible', 'important');
-          clonedPage.style.setProperty('opacity', '1', 'important');
-          clonedPage.style.setProperty('background', '#ffffff', 'important');
-        }
-      }
-    });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 350))));
+    const images = Array.from(page.querySelectorAll('img'));
+    await Promise.all(images.map(img => {
+      if (img.complete) return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
+      return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+    }));
 
+    // html2pdf.bundle já inclui html2canvas e jsPDF. Use o pipeline interno,
+    // sem depender de window.html2canvas ou window.jspdf globais.
+    const worker = html2pdf().set({
+      margin: 0,
+      filename: (val('laudo') || 'Laudo') + '_' + (val('serial') || 'sem_serial') + '.pdf',
+      image: { type: 'jpeg', quality: 0.96 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 1200,
+        onclone: clonedDoc => {
+          const clonedReport = clonedDoc.getElementById('printReport');
+          const clonedPage = clonedDoc.querySelector('#printReport .printPage');
+          if (clonedReport) {
+            Object.assign(clonedReport.style, {
+              display: 'block', position: 'static', left: 'auto', top: 'auto',
+              width: '794px', height: 'auto', overflow: 'visible',
+              opacity: '1', visibility: 'visible', zIndex: 'auto'
+            });
+          }
+          if (clonedPage) {
+            Object.assign(clonedPage.style, {
+              display: 'block', position: 'relative', width: '794px',
+              height: 'auto', minHeight: '0', overflow: 'visible',
+              opacity: '1', visibility: 'visible', background: '#ffffff'
+            });
+          }
+        }
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(page).toCanvas();
+
+    const canvas = await worker.get('canvas');
     if (!canvas || canvas.width < 100 || canvas.height < 100) {
-      throw new Error('A captura do relatório ficou vazia. Atualize a página e tente novamente.');
+      throw new Error('A captura do relatório ficou vazia. Verifique se o navegador está bloqueando a biblioteca.');
     }
-    const pixels = canvas.getContext('2d').getImageData(0, 0, Math.min(canvas.width, 50), Math.min(canvas.height, 50)).data;
-    let hasNonWhitePixel = false;
-    for (let i = 0; i < pixels.length; i += 4) {
-      if (pixels[i] < 245 || pixels[i+1] < 245 || pixels[i+2] < 245) { hasNonWhitePixel = true; break; }
-    }
-    if (!hasNonWhitePixel) throw new Error('A captura ficou branca. Não foi criado um PDF para evitar compartilhar um laudo vazio.');
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const imageHeight = canvas.height * pageWidth / canvas.width;
-    let heightLeft = imageHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, pageWidth, imageHeight, undefined, 'FAST');
-    heightLeft -= pageHeight;
-    while (heightLeft > 0) {
-      position = heightLeft - imageHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, pageWidth, imageHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
-    }
+    // Use the canvas created by html2pdf and its bundled jsPDF instance.
+    const pdfWorker = worker.toPdf();
+    const pdf = await pdfWorker.get('pdf');
     const blob = pdf.output('blob');
-    if (!blob || blob.size < 1000) throw new Error('O PDF gerado está vazio ou inválido.');
+    if (!blob || blob.size < 1000) {
+      throw new Error('O PDF gerado está vazio ou inválido. Atualize a página e tente novamente.');
+    }
     return blob;
   } finally {
     if (originalStyle === null) report.removeAttribute('style');
