@@ -73,176 +73,102 @@ async function makePdfBlob() {
 
   const report = document.getElementById('printReport');
   const pages = report ? Array.from(report.querySelectorAll('.printPage')) : [];
-
-  if (typeof window.html2pdf !== 'function') {
-    throw new Error('A biblioteca de PDF não carregou. Atualize a página e tente novamente.');
-  }
   if (!report || !pages.length || !pages.some(p => p.textContent.trim())) {
     throw new Error('O relatório está vazio. Confira os dados antes de gerar o PDF.');
   }
 
-  const originalReportStyle = report.getAttribute('style');
-  const originalPageStyles = pages.map(p => p.getAttribute('style'));
-  const staging = document.createElement('div');
-  staging.id = 'pdfCaptureStage';
-  Object.assign(staging.style, {
-    position: 'absolute',
-    left: '0',
-    top: '0',
-    width: '794px',
-    minWidth: '794px',
-    maxWidth: '794px',
-    height: 'auto',
-    margin: '0',
-    padding: '0',
-    overflow: 'visible',
-    background: '#ffffff',
-    zIndex: '-1',
-    pointerEvents: 'none'
+  const html2canvasFn = window.html2canvas;
+  const JsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (typeof html2canvasFn !== 'function' || typeof JsPDF !== 'function') {
+    throw new Error('As bibliotecas de captura/PDF não carregaram. Atualize a página e tente novamente.');
+  }
+
+  const stage = document.createElement('div');
+  Object.assign(stage.style, {
+    position: 'fixed', left: '0', top: '0', width: '794px',
+    margin: '0', padding: '0', background: '#fff', zIndex: '2147483000',
+    opacity: '1', visibility: 'visible', pointerEvents: 'none'
   });
 
-  // Put a clean copy in a visible, measurable staging element.
-  // This avoids html2canvas capturing #printReport while its CSS rule says display:none.
-  const capture = report.cloneNode(true);
-  capture.removeAttribute('id');
-  Object.assign(capture.style, {
-    display: 'block',
-    position: 'relative',
-    left: 'auto',
-    top: 'auto',
-    width: '794px',
-    minWidth: '794px',
-    maxWidth: '794px',
-    height: 'auto',
-    margin: '0',
-    padding: '0',
-    overflow: 'visible',
-    background: '#ffffff',
-    color: '#182c2d',
-    visibility: 'visible',
-    opacity: '1',
-    transform: 'none'
+  const clone = report.cloneNode(true);
+  clone.removeAttribute('id');
+  Object.assign(clone.style, {
+    display: 'block', position: 'relative', width: '794px',
+    minWidth: '794px', maxWidth: '794px', height: 'auto',
+    margin: '0', padding: '0', overflow: 'visible',
+    background: '#fff', color: '#182c2d', visibility: 'visible',
+    opacity: '1', transform: 'none'
   });
 
-  const capturePages = Array.from(capture.querySelectorAll('.printPage'));
-  capturePages.forEach((p, i) => Object.assign(p.style, {
-    display: 'block',
-    position: 'relative',
-    width: '794px',
-    minWidth: '794px',
-    maxWidth: '794px',
-    height: 'auto',
-    minHeight: '0',
-    margin: '0',
-    padding: '28px',
-    boxSizing: 'border-box',
-    overflow: 'visible',
-    background: '#ffffff',
-    color: '#182c2d',
-    visibility: 'visible',
-    opacity: '1',
-    transform: 'none',
-    pageBreakAfter: i < capturePages.length - 1 ? 'always' : 'auto',
-    breakAfter: i < capturePages.length - 1 ? 'page' : 'auto'
+  const clonePages = Array.from(clone.querySelectorAll('.printPage'));
+  clonePages.forEach(p => Object.assign(p.style, {
+    display: 'block', position: 'relative', width: '794px',
+    minWidth: '794px', maxWidth: '794px', height: 'auto',
+    minHeight: '0', margin: '0', padding: '28px',
+    boxSizing: 'border-box', overflow: 'visible',
+    background: '#fff', color: '#182c2d', visibility: 'visible',
+    opacity: '1', transform: 'none', pageBreakAfter: 'auto', breakAfter: 'auto'
   }));
 
-  staging.appendChild(capture);
-  document.body.appendChild(staging);
+  stage.appendChild(clone);
+  document.body.appendChild(stage);
 
   try {
-    await new Promise(resolve =>
-      requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 200)))
-    );
-
-    await Promise.all(Array.from(capture.querySelectorAll('img')).map(img => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.all(Array.from(clone.querySelectorAll('img')).map(img => {
       if (img.complete && img.naturalWidth > 0) {
         return img.decode ? img.decode().catch(() => {}) : Promise.resolve();
       }
       return new Promise(resolve => {
         img.onload = resolve;
         img.onerror = resolve;
-        setTimeout(resolve, 2500);
+        setTimeout(resolve, 3000);
       });
     }));
 
-    const bounds = capture.getBoundingClientRect();
-    if (bounds.width < 100 || bounds.height < 100) {
-      throw new Error('Não foi possível medir o conteúdo do laudo. Atualize a página e tente novamente.');
-    }
+    const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    const pageW = 210, pageH = 297, margin = 8;
+    const usableW = pageW - margin * 2, usableH = pageH - margin * 2;
+    let added = 0;
 
-    const worker = window.html2pdf().set({
-      margin: [8, 8, 8, 8],
-      filename: `${val('laudo') || 'Laudo'}_${val('serial') || 'sem_serial'}.pdf`,
-      image: { type: 'jpeg', quality: 0.96 },
-      html2canvas: {
-        scale: 1.35,
+    for (const el of clonePages) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 100 || rect.height < 50) continue;
+
+      const canvas = await html2canvasFn(el, {
+        scale: 1.5,
         useCORS: true,
         allowTaint: false,
         backgroundColor: '#ffffff',
         logging: false,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 794,
-        width: Math.ceil(bounds.width),
-        height: Math.ceil(bounds.height),
-        onclone: clonedDoc => {
-          const clonedStage = clonedDoc.getElementById('pdfCaptureStage');
-          if (clonedStage) {
-            Object.assign(clonedStage.style, {
-              position: 'static',
-              left: 'auto',
-              top: 'auto',
-              width: '794px',
-              minWidth: '794px',
-              maxWidth: '794px',
-              height: 'auto',
-              overflow: 'visible',
-              zIndex: 'auto',
-              display: 'block',
-              visibility: 'visible',
-              opacity: '1'
-            });
-          }
-          const clonedCapture = clonedStage && clonedStage.firstElementChild;
-          if (clonedCapture) {
-            Object.assign(clonedCapture.style, {
-              display: 'block',
-              position: 'relative',
-              width: '794px',
-              minWidth: '794px',
-              maxWidth: '794px',
-              height: 'auto',
-              overflow: 'visible',
-              visibility: 'visible',
-              opacity: '1',
-              transform: 'none'
-            });
-          }
-        }
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-      pagebreak: { mode: ['css', 'legacy'], avoid: ['table', 'tr', 'img', '.printPhoto'] }
-    });
+        width: Math.ceil(rect.width),
+        height: Math.ceil(rect.height),
+        windowWidth: 794
+      });
 
-    const pdf = await worker.from(capture).toPdf().get('pdf');
-    if (!pdf || pdf.getNumberOfPages() < 1) {
-      throw new Error('O gerador não criou páginas para o laudo.');
+      if (!canvas || canvas.width < 100 || canvas.height < 50) continue;
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const ratio = Math.min(usableW / (canvas.width / canvas.height), usableH / (canvas.height / canvas.width));
+      const drawW = Math.min(usableW, (canvas.width / canvas.height) * usableH);
+      const drawH = Math.min(usableH, (canvas.height / canvas.width) * usableW);
+      const x = margin + (usableW - drawW) / 2;
+      const y = margin;
+
+      if (added > 0) pdf.addPage('a4', 'portrait');
+      pdf.addImage(imgData, 'JPEG', x, y, drawW, drawH, undefined, 'FAST');
+      added++;
     }
 
-    // Verify that the generated PDF contains rendered page content, not just an empty A4 page.
+    if (!added) throw new Error('Não foi possível capturar o conteúdo do laudo. Atualize a página e tente novamente.');
+
     const blob = pdf.output('blob');
-    if (!blob || blob.size < 5000) {
-      throw new Error('O PDF gerado parece estar em branco. Nenhum arquivo vazio será entregue; tente novamente.');
-    }
+    if (!blob || blob.size < 5000) throw new Error('O PDF ficou vazio ou inválido. Nenhum arquivo foi entregue.');
     return blob;
   } finally {
-    staging.remove();
-    if (originalReportStyle === null) report.removeAttribute('style');
-    else report.setAttribute('style', originalReportStyle);
-    pages.forEach((p, i) => {
-      if (originalPageStyles[i] === null) p.removeAttribute('style');
-      else p.setAttribute('style', originalPageStyles[i]);
-    });
+    stage.remove();
   }
 }
 
